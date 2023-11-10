@@ -7,7 +7,7 @@ import { ServerConigOptions } from "./server.js";
 
 export const serve_font = (
 	options: ServerConigOptions,
-	allowedFonts: string[],
+	allowedFonts: Map<string, boolean>,
 ) => {
 	const app = new App().disable("xPoweredBy");
 

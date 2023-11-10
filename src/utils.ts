@@ -178,7 +178,7 @@ const getFontPbf = (
 	});
 
 export const getFontsPbf = (
-	allowedFonts,
+	allowedFonts: Map<string, boolean>,
 	fontPath: string,
 	names: string,
 	range: string,

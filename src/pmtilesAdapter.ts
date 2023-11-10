@@ -21,12 +21,6 @@ class PMTilesFileSource {
 	}
 }
 
-/**
- *
- * @param fd
- * @param buffer
- * @param offset
- */
 async function ReadFileBytes(fd: number, buffer: Uint8Array, offset: number) {
 	return new Promise((resolve, reject) => {
 		read(fd, buffer, 0, buffer.length, offset, (err) => {
@@ -38,23 +32,14 @@ async function ReadFileBytes(fd: number, buffer: Uint8Array, offset: number) {
 	});
 }
 
-/**
- *
- * @param FilePath
- */
 export function PMtilesOpen(FilePath: string) {
 	const fd = openSync(FilePath, "r");
 	const source = new PMTilesFileSource(fd);
 	return new PMTiles(source);
 }
 
-/**
- *
- * @param pmtiles
- */
 export async function GetPMtilesInfo(pmtiles: PMTiles) {
 	const header = await pmtiles.getHeader();
-	console.log("header: ", header);
 
 	const metadata = await pmtiles.getMetadata();
 
@@ -108,13 +93,7 @@ export async function GetPMtilesTile(
 	return { data: zxyTile, header: TileType.header };
 }
 
-/**
- *
- * @param typenum
- */
 function GetPmtilesTileType(typenum: TileType) {
-	console.log(typenum);
-
 	let head = {};
 	let tileType;
 	switch (typenum) {

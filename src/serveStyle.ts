@@ -99,12 +99,15 @@ export const serve_style = {
 	},
 	add: (
 		options: ServerConigOptions,
-		repo: Map<string, any>
+		repo: Map<string, any>,
 		params,
 		id: string,
 		publicUrl: string,
-		reportTiles,
-		reportFont,
+		reportTiles: (
+			StyleSourceId: string,
+			protocol: string,
+		) => string | undefined,
+		reportFont: (font: string) => void,
 	) => {
 		const styleFile = resolve(options.paths.styles, params.style);
 

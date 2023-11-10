@@ -2,9 +2,7 @@ import { readFile, promises, readdir, Dirent } from "node:fs";
 import { dirname, resolve, extname, basename, join, sep } from "path";
 import chokidar from "chokidar";
 import clone from "clone";
-import handlebars from "handlebars";
-import SphericalMercator from "@mapbox/sphericalmercator";
-const mercator = new SphericalMercator();
+import handlebars, { log } from "handlebars";
 import { serve_data } from "./serveData.js";
 import { serve_style } from "./serveStyle.js";
 import { serve_font } from "./serveFont.js";
@@ -12,7 +10,7 @@ import { getTileUrls, getPublicUrl, TileJSON } from "./utils.js";
 import { readPackageSync } from "read-pkg";
 
 import { fileURLToPath } from "url";
-import { App, Request } from "@tinyhttp/app";
+import { App, Request, Response } from "@tinyhttp/app";
 import { logger } from "@tinyhttp/logger";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -57,9 +55,19 @@ export function start(opts: ServerOptions) {
 
 	const serving = {
 		styles: new Map<string, any>(),
-		rendered: new Map<string, any>(),
-		data: new Map<string, any>(),
-		fonts: new Map<string, any>(),
+		rendered: new Map<
+			string,
+			{
+				name: string;
+			}
+		>(),
+		data: new Map<
+			string,
+			{
+				tileJSON: TileJSON;
+			}
+		>(),
+		fonts: new Map<string, boolean>(),
 	};
 
 	const options = opts.config.options;
@@ -119,7 +127,7 @@ export function start(opts: ServerOptions) {
 				item,
 				id,
 				opts.publicUrl,
-				(StyleSourceId, protocol) => {
+				(StyleSourceId: string, protocol: string) => {
 					let dataItemId;
 					for (const id of Object.keys(data)) {
 						if (id === StyleSourceId) {
@@ -159,7 +167,7 @@ export function start(opts: ServerOptions) {
 				},
 				(font) => {
 					if (reportFonts) {
-						serving.fonts[font] = true;
+						serving.fonts.set(font, true);
 					}
 				},
 			);
@@ -178,12 +186,6 @@ export function start(opts: ServerOptions) {
 
 		addStyle(id, item, true, true);
 	}
-
-	startupPromises.push(
-		serve_font(options, serving.fonts).then((sub) => {
-			app.use("/", sub);
-		}),
-	);
 
 	for (const id of Object.keys(data)) {
 		const item = data[id];
@@ -234,26 +236,21 @@ export function start(opts: ServerOptions) {
 
 	app.get("/styles.json", (req, res) => {
 		const result = [];
-		const query = req.query.key
-			? `?key=${encodeURIComponent(req.query.key)}`
-			: "";
-		for (const id of Object.keys(serving.styles)) {
+
+		for (const id of serving.styles.keys()) {
 			const styleJSON = serving.styles.get(id).styleJSON;
 			result.push({
 				version: styleJSON.version,
 				name: styleJSON.name,
 				id: id,
-				url: `${getPublicUrl(
-					opts.publicUrl,
-					req,
-				)}styles/${id}/style.json${query}`,
+				url: `${getPublicUrl(opts.publicUrl, req)}styles/${id}/style.json`,
 			});
 		}
 		res.send(result);
 	});
 
 	const addTileJSONs = (arr: TileJSON[], req: Request, type) => {
-		for (const id of Object.keys(serving[type])) {
+		for (const id of serving[type].keys()) {
 			const info = clone(serving[type].get(id).tileJSON);
 			let path = "";
 			if (type === "rendered") {
@@ -284,149 +281,50 @@ export function start(opts: ServerOptions) {
 	});
 
 	const templates = join(__dirname, "../public/templates");
-	const serveTemplate = (urlPath: string, template: string, dataGetter) => {
-		console.log("serveTemplate", urlPath, template, dataGetter);
 
-		let templateFile = `${templates}/${template}.tmpl`;
-		if (template === "index") {
-			if (options.frontPage === false) {
-				return;
-			} else if (
-				options.frontPage &&
-				options.frontPage.constructor === String
-			) {
-				templateFile = resolve(paths.root, options.frontPage);
-			}
-		}
-		startupPromises.push(
-			new Promise((resolve, reject) => {
-				readFile(templateFile, (err, content) => {
-					if (err) {
-						err = new Error(`Template not found: ${err.message}`);
-						reject(err);
-						return;
-					}
-					const compiled = handlebars.compile(content.toString());
+	const serveTemplate = (
+		urlPath: string,
+		template: string,
+		dataGetter: (req: Request) => any,
+	) => {
+		console.log("\n\n\nserveTemplate", urlPath, template);
 
-					app.use(urlPath, (req, res, next) => {
-						let data = {};
-						if (dataGetter) {
-							data = dataGetter(req);
-							if (!data) {
-								return res.status(404).send("Not found");
-							}
-						}
-						const packageJsonData = readPackageSync();
-						data.server_version = `${packageJsonData.name} v${packageJsonData.version}`;
-						data.public_url = opts.publicUrl;
-						// data["is_light"] = isLight;
-						data.key_query_part = req.query.key
-							? `key=${encodeURIComponent(req.query.key)}&amp;`
-							: "";
-						data.key_query = req.query.key
-							? `?key=${encodeURIComponent(req.query.key)}`
-							: "";
-						if (template === "wmts") res.set("Content-Type", "text/xml");
-						return res.status(200).send(compiled(data));
-					});
-					resolve();
-				});
-			}),
-		);
-	};
+		const templateFile = `${templates}/${template}.tmpl`;
 
-	serveTemplate("/$", "index", (req: Request) => {
-		const styles = new Map<string, any>();
+		console.log("templateFile", templateFile);
 
-		for (const id of Object.keys(serving.styles)) {
-			const style = {
-				...serving.styles.get(id),
-				serving_data: serving.styles.get(id),
-				serving_rendered: serving.rendered.get(id),
-			};
+		const serveTemplate = async () => {
+			const content = await promises.readFile(templateFile);
+			const compiled = handlebars.compile(content.toString());
 
-			if (style.serving_rendered) {
-				const { center } = style.serving_rendered.tileJSON;
-				if (center) {
-					style.viewer_hash = `#${center[2]}/${center[1].toFixed(
-						5,
-					)}/${center[0].toFixed(5)}`;
+			app.use(urlPath, async (req, res) => {
+				let data = {};
 
-					const centerPx = mercator.px([center[0], center[1]], center[2]);
-					style.thumbnail = `${center[2]}/${Math.floor(
-						centerPx[0] / 256,
-					)}/${Math.floor(centerPx[1] / 256)}.png`;
+				if (dataGetter) {
+					data = dataGetter(req);
+
+					console.log("dataGetter", data);
 				}
 
-				style.xyz_link = getTileUrls(
-					req,
-					style.serving_rendered.tileJSON.tiles,
-					`styles/${id}`,
-					style.serving_rendered.tileJSON.format,
-					opts.publicUrl,
-				)[0];
-			}
+				const packageJsonData = readPackageSync();
+				data.server_version = `${packageJsonData.name} v${packageJsonData.version}`;
+				data.public_url = opts.publicUrl;
+				// data["is_light"] = isLight;
+				data.key_query_part = req.query.key
+					? `key=${encodeURIComponent(req.query.key)}&amp;`
+					: "";
+				data.key_query = req.query.key
+					? `?key=${encodeURIComponent(req.query.key)}`
+					: "";
 
-			styles.set(id, style);
-		}
+				if (template === "wmts") res.set("Content-Type", "text/xml");
 
-		let datas = {};
-		for (const id of Object.keys(serving.data)) {
-			let data = Object.assign({}, serving.data.get(id));
-
-			console.log(id);
-
-			console.log(serving.data.keys());
-
-			const tileJSON = serving.data.get(id).tileJSON as TileJSON;
-
-			const { center } = tileJSON;
-
-			if (center) {
-				data.viewer_hash = `#${center[2]}/${center[1].toFixed(
-					5,
-				)}/${center[0].toFixed(5)}`;
-			}
-
-			data.is_vector = tileJSON.format === "pbf";
-			if (!data.is_vector) {
-				if (center) {
-					const centerPx = mercator.px([center[0], center[1]], center[2]);
-					data.thumbnail = `${center[2]}/${Math.floor(
-						centerPx[0] / 256,
-					)}/${Math.floor(centerPx[1] / 256)}.${tileJSON.format}`;
-				}
-
-				data.xyz_link = getTileUrls(
-					req,
-					tileJSON.tiles,
-					`data/${id}`,
-					tileJSON.format,
-					opts.publicUrl,
-				)[0];
-			}
-			if (data.filesize) {
-				let suffix = "kB";
-				let size = parseInt(tileJSON.filesize, 10) / 1024;
-				if (size > 1024) {
-					suffix = "MB";
-					size /= 1024;
-				}
-				if (size > 1024) {
-					suffix = "GB";
-					size /= 1024;
-				}
-				data.formatted_filesize = `${size.toFixed(2)} ${suffix}`;
-			}
-
-			datas[id] = data;
-		}
-
-		return {
-			styles: Object.keys(styles).length ? styles : null,
-			data: Object.keys(datas).length ? datas : null,
+				return res.status(200).send(compiled(data));
+			});
 		};
-	});
+
+		startupPromises.push(serveTemplate());
+	};
 
 	serveTemplate("/styles/:id/$", "viewer", (req: Request) => {
 		const { id } = req.params;
@@ -499,16 +397,8 @@ export function start(opts: ServerOptions) {
 		startupComplete = true;
 	});
 
-	app.get("/health", (_, res) => {
-		if (startupComplete) {
-			return res.status(200).send("OK");
-		} else {
-			return res.status(503).send("Starting");
-		}
-	});
-
 	const server = app.listen(parseInt(process.env.PORT ?? "5000"), async () => {
-		console.log(`🚀 Server listening on port ${process.env.PORT}`);
+		console.log(`🚀 Server listening on port ${process.env.PORT ?? "5000"}`);
 	});
 
 	return {
