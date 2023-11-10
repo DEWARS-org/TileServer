@@ -3,9 +3,12 @@ import { join } from "path";
 
 import { getFontsPbf } from "./utils.js";
 import { App } from "@tinyhttp/app";
-import { ServerConfig } from "./server.js";
+import { ServerConigOptions } from "./server.js";
 
-export const serve_font = (options: ServerConfig, allowedFonts: string[]) => {
+export const serve_font = (
+	options: ServerConigOptions,
+	allowedFonts: string[],
+) => {
 	const app = new App().disable("xPoweredBy");
 
 	const lastModified = new Date().toUTCString();

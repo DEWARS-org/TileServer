@@ -1,11 +1,10 @@
 import { read, openSync } from "node:fs";
 import { PMTiles, FetchSource, TileType } from "pmtiles";
-import { isValidHttpUrl } from "./utils.js";
 
 class PMTilesFileSource {
-	fd: string;
+	fd: number;
 
-	constructor(fd: string) {
+	constructor(fd: number) {
 		this.fd = fd;
 	}
 	getKey() {
@@ -44,17 +43,9 @@ async function ReadFileBytes(fd: number, buffer: Uint8Array, offset: number) {
  * @param FilePath
  */
 export function PMtilesOpen(FilePath: string) {
-	let pmtiles = undefined;
-
-	if (isValidHttpUrl(FilePath)) {
-		const source = new FetchSource(FilePath);
-		pmtiles = new PMTiles(source);
-	} else {
-		const fd = openSync(FilePath, "r");
-		const source = new PMTilesFileSource(fd);
-		pmtiles = new PMTiles(source);
-	}
-	return pmtiles;
+	const fd = openSync(FilePath, "r");
+	const source = new PMTilesFileSource(fd);
+	return new PMTiles(source);
 }
 
 /**

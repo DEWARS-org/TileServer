@@ -7,22 +7,22 @@ import Pbf from "pbf";
 import { VectorTile } from "@mapbox/vector-tile";
 import { App, type Request, Response } from "@tinyhttp/app";
 
-import { getTileUrls, isValidHttpUrl, fixTileJSONCenter } from "./utils.js";
+import { getTileUrls, fixTileJSONCenter, TileJSON } from "./utils.js";
 import {
 	PMtilesOpen,
 	GetPMtilesInfo,
 	GetPMtilesTile,
 } from "./pmtilesAdapter.js";
-import { ServerConfig } from "./server.js";
+import { ServerConfig, ServerConigOptions } from "./server.js";
 
 export const serve_data = {
-	init: (options: ServerConfig, repo) => {
+	init: (options: ServerConigOptions, repo: Map<string, any>) => {
 		const app = new App().disable("xPoweredBy");
 
 		app.get(
 			"/:id/:z(\\d+)/:x(\\d+)/:y(\\d+).:format([\\w.]+)",
 			async (req, res) => {
-				const item = repo[req.params.id];
+				const item = repo.get(req.params.id);
 				if (!item) {
 					return res.sendStatus(404);
 				}
@@ -99,7 +99,7 @@ export const serve_data = {
 		);
 
 		app.get("/:id.json", (req, res) => {
-			const item = repo[req.params.id];
+			const item = repo.get(req.params.id);
 			if (!item) {
 				return res.sendStatus(404);
 			}
@@ -116,27 +116,27 @@ export const serve_data = {
 
 		return app;
 	},
-	add: async (options, repo, params, id, publicUrl) => {
+	add: async (
+		options: ServerConigOptions,
+		repo: Map<string, any>,
+		params,
+		id: string,
+		publicUrl: string,
+	) => {
 		let inputFile;
 		let inputType;
 		if (params.pmtiles) {
 			inputType = "pmtiles";
-			if (isValidHttpUrl(params.pmtiles)) {
-				inputFile = params.pmtiles;
-			} else {
-				inputFile = resolve(options.paths.pmtiles, params.pmtiles);
-			}
+			inputFile = resolve(options.paths.pmtiles, params.pmtiles);
 		}
 
-		let tileJSON = {
+		let tileJSON: TileJSON = {
 			tiles: params.domains || options.domains,
 		};
 
-		if (!isValidHttpUrl(inputFile)) {
-			const inputFileStats = statSync(inputFile);
-			if (!inputFileStats.isFile() || inputFileStats.size === 0) {
-				throw Error(`Not valid input file: "${inputFile}"`);
-			}
+		const inputFileStats = statSync(inputFile);
+		if (!inputFileStats.isFile() || inputFileStats.size === 0) {
+			throw Error(`Not valid input file: "${inputFile}"`);
 		}
 
 		let source;
@@ -146,14 +146,14 @@ export const serve_data = {
 			source_type = "pmtiles";
 			const metadata = await GetPMtilesInfo(source);
 
-			tileJSON["name"] = id;
-			tileJSON["format"] = "pbf";
+			tileJSON.name = id;
+			tileJSON.format = "pbf";
 			Object.assign(tileJSON, metadata);
 
-			tileJSON["tilejson"] = "2.0.0";
-			delete tileJSON["filesize"];
-			delete tileJSON["mtime"];
-			delete tileJSON["scheme"];
+			tileJSON.tilejson = "2.0.0";
+			tileJSON.filesize = undefined;
+			tileJSON.mtime = undefined;
+			tileJSON.scheme = undefined;
 
 			Object.assign(tileJSON, params.tilejson);
 			fixTileJSONCenter(tileJSON);
@@ -163,11 +163,11 @@ export const serve_data = {
 			}
 		}
 
-		repo[id] = {
+		repo.set(id, {
 			tileJSON,
 			publicUrl,
 			source,
 			source_type,
-		};
+		});
 	},
 };

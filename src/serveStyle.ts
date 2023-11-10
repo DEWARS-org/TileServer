@@ -7,6 +7,7 @@ import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import type { Request, Response, NextFunction } from "@tinyhttp/app";
 
 import { getPublicUrl } from "./utils.js";
+import { ServerConigOptions } from "./server.js";
 
 const httpTester = /^(http(s)?:)?\/\//;
 
@@ -31,13 +32,13 @@ const fixUrl = (
 };
 
 export const serve_style = {
-	init: (options, repo) => {
+	init: (options: ServerConigOptions, repo: Map<string, any>) => {
 		const app = new App().disable("xPoweredBy");
 
 		app.get(
 			"/:id/style.json",
 			(req: Request, res: Response, next: NextFunction) => {
-				const item = repo[req.params.id];
+				const item = repo.get(req.params.id);
 				if (!item) {
 					return res.sendStatus(404);
 				}
@@ -70,7 +71,7 @@ export const serve_style = {
 		app.get(
 			"/:id/sprite:scale(@[23]x)?.:format([\\w]+)",
 			(req: Request, res: Response, next: NextFunction) => {
-				const item = repo[req.params.id];
+				const item = repo.get(req.params.id);
 				if (!item || !item.spritePath) {
 					return res.sendStatus(404);
 				}
@@ -93,12 +94,12 @@ export const serve_style = {
 
 		return app;
 	},
-	remove: (repo, id: string) => {
-		delete repo[id];
+	remove: (repo: Map<string, any>, id: string) => {
+		repo.delete(id);
 	},
 	add: (
-		options,
-		repo,
+		options: ServerConigOptions,
+		repo: Map<string, any>
 		params,
 		id: string,
 		publicUrl: string,
@@ -177,12 +178,12 @@ export const serve_style = {
 			styleJSON.glyphs = "local://fonts/{fontstack}/{range}.pbf";
 		}
 
-		repo[id] = {
+		repo.set(id, {
 			styleJSON,
 			spritePath,
 			publicUrl,
 			name: styleJSON.name,
-		};
+		});
 
 		return true;
 	},

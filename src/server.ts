@@ -1,15 +1,5 @@
-import {
-	readFileSync,
-	createWriteStream,
-	existsSync,
-	readFile,
-	promises,
-	readdir,
-	Dirent,
-} from "node:fs";
-import fsPromises from "node:fs/promises";
+import { readFile, promises, readdir, Dirent } from "node:fs";
 import { dirname, resolve, extname, basename, join, sep } from "path";
-import fnv1a from "@sindresorhus/fnv1a";
 import chokidar from "chokidar";
 import clone from "clone";
 import handlebars from "handlebars";
@@ -33,19 +23,22 @@ export interface ServerOptions {
 	publicUrl: string;
 }
 
-export interface ServerConfig {
-	options: {
-		paths: {
-			root: string;
-			styles: string;
-			fonts: string;
-			sprites: string;
-			pmtiles: string;
-			icons: string;
-		};
-		serveAllStyles: boolean;
-		frontPage: boolean | string;
+export interface ServerConigOptions {
+	paths: {
+		root: string;
+		styles: string;
+		fonts: string;
+		sprites: string;
+		pmtiles: string;
+		icons: string;
 	};
+	serveAllStyles: boolean;
+	frontPage: boolean | string;
+}
+
+export interface ServerConfig {
+	options: ServerConigOptions;
+
 	styles: {
 		[key: string]: {
 			style: string;
@@ -83,7 +76,7 @@ export function start(opts: ServerOptions) {
 
 	const getFiles = async (directory: string): Promise<string[]> => {
 		// Fetch all entries of the directory and attach type information
-		const dirEntries: Dirent[] = await fsPromises.readdir(directory, {
+		const dirEntries: Dirent[] = await promises.readdir(directory, {
 			withFileTypes: true,
 		});
 
@@ -153,10 +146,7 @@ export function start(opts: ServerOptions) {
 							let id =
 								StyleSourceId.substr(0, StyleSourceId.lastIndexOf(".")) ||
 								StyleSourceId;
-							if (isValidHttpUrl(StyleSourceId)) {
-								id =
-									fnv1a(StyleSourceId) + "_" + id.replace(/^.*\/(.*)$/, "$1");
-							}
+
 							while (data[id]) id += "_"; //if the data source id already exists, add a "_" untill it doesn't
 							//Add the new data source to the data array.
 							data[id] = {
@@ -384,8 +374,11 @@ export function start(opts: ServerOptions) {
 		for (const id of Object.keys(serving.data)) {
 			let data = Object.assign({}, serving.data.get(id));
 
-			// const { tileJSON } = serving.data[id];
-			const tileJSON = serving.data.get().tileJSON as TileJSON;
+			console.log(id);
+
+			console.log(serving.data.keys());
+
+			const tileJSON = serving.data.get(id).tileJSON as TileJSON;
 
 			const { center } = tileJSON;
 
