@@ -126,18 +126,15 @@ export const serve_style = {
 		for (const name of Object.keys(styleJSON.sources)) {
 			const source = styleJSON.sources[name];
 			let url = source.url;
-			if (
-				url &&
-				(url.startsWith("pmtiles://") || url.startsWith("mbtiles://"))
-			) {
+			if (url && url.startsWith("pmtiles://")) {
 				const protocol = url.split(":")[0];
 
-				let dataId = url.replace("pmtiles://", "").replace("mbtiles://", "");
+				let dataId = url.replace("pmtiles://", "");
 				if (dataId.startsWith("{") && dataId.endsWith("}")) {
 					dataId = dataId.slice(1, -1);
 				}
 
-				const mapsTo = (params.mapping || {})[dataId];
+				const mapsTo = params.mappin[dataId];
 				if (mapsTo) {
 					dataId = mapsTo;
 				}
@@ -152,7 +149,7 @@ export const serve_style = {
 
 		for (const obj of styleJSON.layers) {
 			if (obj["type"] === "symbol") {
-				const fonts = (obj["layout"] || {})["text-font"];
+				const fonts = obj["layout"]["text-font"];
 				if (fonts && fonts.length) {
 					fonts.forEach(reportFont);
 				} else {

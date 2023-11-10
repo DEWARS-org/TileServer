@@ -31,7 +31,6 @@ export const getTileUrls = (
 	path: string,
 	format: string,
 	publicUrl: string,
-	aliases,
 ) => {
 	const urlObject = getUrlObject(req);
 	if (domains) {
@@ -69,10 +68,6 @@ export const getTileUrls = (
 	}
 	const query = queryParams.length > 0 ? `?${queryParams.join("&")}` : "";
 
-	if (aliases && aliases[format]) {
-		format = aliases[format];
-	}
-
 	const uris = [];
 	if (!publicUrl) {
 		for (const domain of domains) {
@@ -87,7 +82,37 @@ export const getTileUrls = (
 	return uris;
 };
 
-export const fixTileJSONCenter = (tileJSON) => {
+export interface TileJSON {
+	tilejson: string;
+	tiles: string[];
+	vector_layers: {
+		id: string;
+		fields: {
+			[k: string]: string;
+		};
+		description?: string;
+		maxzoom?: number;
+		minzoom?: number;
+		[k: string]: unknown;
+	}[];
+	attribution?: string;
+	bounds?: number[];
+	center?: number[];
+	data?: string[];
+	description?: string;
+	fillzoom?: number;
+	grids?: string[];
+	legend?: string;
+	maxzoom?: number;
+	minzoom?: number;
+	name?: string;
+	scheme?: string;
+	template?: string;
+	version?: string;
+	[k: string]: unknown;
+}
+
+export const fixTileJSONCenter = (tileJSON: TileJSON) => {
 	if (tileJSON.bounds && !tileJSON.center) {
 		const fitWidth = 1024;
 		const tiles = fitWidth / 256;
@@ -113,7 +138,7 @@ const getFontPbf = (
 		if (!allowedFonts || (allowedFonts[name] && fallbacks)) {
 			const filename = join(fontPath, name, `${range}.pbf`);
 			if (!fallbacks) {
-				fallbacks = clone(allowedFonts || {});
+				fallbacks = clone(allowedFonts);
 			}
 			delete fallbacks[name];
 			readFile(filename, (err, data) => {
@@ -174,16 +199,4 @@ export const getFontsPbf = (
 	}
 
 	return Promise.all(queue).then((values) => glyphCompose.combine(values));
-};
-
-export const isValidHttpUrl = (string: string) => {
-	let url;
-
-	try {
-		url = new URL(string);
-	} catch (_) {
-		return false;
-	}
-
-	return url.protocol === "http:" || url.protocol === "https:";
 };

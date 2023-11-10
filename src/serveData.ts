@@ -13,9 +13,10 @@ import {
 	GetPMtilesInfo,
 	GetPMtilesTile,
 } from "./pmtilesAdapter.js";
+import { ServerConfig } from "./server.js";
 
 export const serve_data = {
-	init: (options, repo) => {
+	init: (options: ServerConfig, repo) => {
 		const app = new App().disable("xPoweredBy");
 
 		app.get(
@@ -30,9 +31,6 @@ export const serve_data = {
 				const x = req.params.x | 0;
 				const y = req.params.y | 0;
 				let format = req.params.format;
-				if (format === options.pbfAlias) {
-					format = "pbf";
-				}
 				if (
 					format !== tileJSONFormat &&
 					!(format === "geojson" && tileJSONFormat === "pbf")
@@ -112,9 +110,6 @@ export const serve_data = {
 				`data/${req.params.id}`,
 				info.format,
 				item.publicUrl,
-				{
-					pbf: options.pbfAlias,
-				},
 			);
 			return res.send(info);
 		});
@@ -160,7 +155,7 @@ export const serve_data = {
 			delete tileJSON["mtime"];
 			delete tileJSON["scheme"];
 
-			Object.assign(tileJSON, params.tilejson || {});
+			Object.assign(tileJSON, params.tilejson);
 			fixTileJSONCenter(tileJSON);
 
 			if (options.dataDecoratorFunc) {

@@ -7,7 +7,6 @@ const config = {
 			styles: "./styles",
 			fonts: "./fonts",
 			sprites: "./sprites",
-			mbtiles: "./mbtiles",
 			pmtiles: "./pmtiles",
 			icons: "./icons",
 		},

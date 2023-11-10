@@ -5,7 +5,9 @@ import {
 	readFile,
 	promises,
 	readdir,
+	Dirent,
 } from "node:fs";
+import fsPromises from "node:fs/promises";
 import { dirname, resolve, extname, basename, join, sep } from "path";
 import fnv1a from "@sindresorhus/fnv1a";
 import chokidar from "chokidar";
@@ -16,7 +18,7 @@ const mercator = new SphericalMercator();
 import { serve_data } from "./serveData.js";
 import { serve_style } from "./serveStyle.js";
 import { serve_font } from "./serveFont.js";
-import { getTileUrls, getPublicUrl, isValidHttpUrl } from "./utils.js";
+import { getTileUrls, getPublicUrl, TileJSON } from "./utils.js";
 import { readPackageSync } from "read-pkg";
 
 import { fileURLToPath } from "url";
@@ -25,87 +27,73 @@ import { logger } from "@tinyhttp/logger";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-interface ServerOptions {
+export interface ServerOptions {
 	config: ServerConfig;
 	configPath?: string;
 	publicUrl: string;
 }
 
-interface ServerConfig {
+export interface ServerConfig {
 	options: {
 		paths: {
 			root: string;
 			styles: string;
 			fonts: string;
 			sprites: string;
-			mbtiles: string;
 			pmtiles: string;
 			icons: string;
 		};
 		serveAllStyles: boolean;
 		frontPage: boolean | string;
-		pbfAlias: string;
+	};
+	styles: {
+		[key: string]: {
+			style: string;
+			tilejson: TileJSON;
+		};
+	};
+	data: {
+		[key: string]: {
+			pmtiles: string;
+		};
 	};
 }
 
 export function start(opts: ServerOptions) {
-	console.log("Starting server");
+	const app = new App().disable("xPoweredBy").use(logger());
 
-	const app = new App().disable("xPoweredBy");
-	app.use(logger());
 	const serving = {
-		styles: {},
-		rendered: {},
-		data: {},
-		fonts: {},
+		styles: new Map<string, any>(),
+		rendered: new Map<string, any>(),
+		data: new Map<string, any>(),
+		fonts: new Map<string, any>(),
 	};
 
 	const options = opts.config.options;
 	const paths = options.paths;
 	options.paths = paths;
 	paths.root = resolve(process.cwd(), paths.root);
-	paths.styles = resolve(paths.root, paths.styles || "");
-	paths.fonts = resolve(paths.root, paths.fonts || "");
-	paths.sprites = resolve(paths.root, paths.sprites || "");
-	paths.mbtiles = resolve(paths.root, paths.mbtiles || "");
-	paths.pmtiles = resolve(paths.root, paths.pmtiles || "");
-	paths.icons = resolve(paths.root, paths.icons || "");
+	paths.styles = resolve(paths.root, paths.styles);
+	paths.fonts = resolve(paths.root, paths.fonts);
+	paths.sprites = resolve(paths.root, paths.sprites);
+	paths.pmtiles = resolve(paths.root, paths.pmtiles);
+	paths.icons = resolve(paths.root, paths.icons);
 
 	const startupPromises = [];
 
-	const checkPath = (type: string) => {
-		if (!existsSync(paths[type])) {
-			console.error(
-				`The specified path for "${type}" does not exist (${paths[type]}).`,
-			);
-			process.exit(1);
-		}
-	};
-	checkPath("styles");
-	checkPath("fonts");
-	checkPath("sprites");
-	checkPath("mbtiles");
-	checkPath("pmtiles");
-	checkPath("icons");
-
-	/**
-	 * Recursively get all files within a directory.
-	 * Inspired by https://stackoverflow.com/a/45130990/10133863
-	 * @param {string} directory Absolute path to a directory to get files from.
-	 */
-	const getFiles = async (directory: string) => {
+	const getFiles = async (directory: string): Promise<string[]> => {
 		// Fetch all entries of the directory and attach type information
-		const dirEntries = await promises.readdir(directory, {
+		const dirEntries: Dirent[] = await fsPromises.readdir(directory, {
 			withFileTypes: true,
 		});
 
 		// Iterate through entries and return the relative file-path to the icon directory if it is not a directory
 		// otherwise initiate a recursive call
 		const files = await Promise.all(
-			dirEntries.map((dirEntry) => {
+			dirEntries.map(async (dirEntry) => {
 				const entryPath = resolve(directory, dirEntry.name);
 				return dirEntry.isDirectory()
-					? getFiles(entryPath)
+					? await getFiles(entryPath)
 					: entryPath.replace(paths.icons + sep, "");
 			}),
 		);
@@ -124,16 +112,7 @@ export function start(opts: ServerOptions) {
 		}),
 	);
 
-	if (options.dataDecorator) {
-		try {
-			options.dataDecoratorFunc = require(resolve(
-				paths.root,
-				options.dataDecorator,
-			));
-		} catch (e) {}
-	}
-
-	const data = clone(opts.config.data || {});
+	const data = clone(opts.config.data);
 
 	app.use("/data/", serve_data.init(options, serving.data));
 	app.use("/styles/", serve_style.init(options, serving.styles));
@@ -200,7 +179,7 @@ export function start(opts: ServerOptions) {
 		}
 	};
 
-	for (const id of Object.keys(opts.config.styles || {})) {
+	for (const id of Object.keys(opts.config.styles)) {
 		const item = opts.config.styles[id];
 		if (!item.style || item.style.length === 0) {
 			console.log(`Missing "style" property for ${id}`);
@@ -219,10 +198,8 @@ export function start(opts: ServerOptions) {
 	for (const id of Object.keys(data)) {
 		const item = data[id];
 		const fileType = Object.keys(data[id])[0];
-		if (!fileType || !(fileType === "pmtiles" || fileType === "mbtiles")) {
-			console.log(
-				`Missing "pmtiles" or "mbtiles" property for ${id} data source`,
-			);
+		if (!fileType || !(fileType === "pmtiles")) {
+			console.log(`Missing "pmtiles" property for ${id} data source`);
 			continue;
 		}
 
@@ -271,7 +248,7 @@ export function start(opts: ServerOptions) {
 			? `?key=${encodeURIComponent(req.query.key)}`
 			: "";
 		for (const id of Object.keys(serving.styles)) {
-			const styleJSON = serving.styles[id].styleJSON;
+			const styleJSON = serving.styles.get(id).styleJSON;
 			result.push({
 				version: styleJSON.version,
 				name: styleJSON.name,
@@ -285,9 +262,9 @@ export function start(opts: ServerOptions) {
 		res.send(result);
 	});
 
-	const addTileJSONs = (arr, req: Request, type) => {
+	const addTileJSONs = (arr: TileJSON[], req: Request, type) => {
 		for (const id of Object.keys(serving[type])) {
-			const info = clone(serving[type][id].tileJSON);
+			const info = clone(serving[type].get(id).tileJSON);
 			let path = "";
 			if (type === "rendered") {
 				path = `styles/${id}`;
@@ -300,9 +277,6 @@ export function start(opts: ServerOptions) {
 				path,
 				info.format,
 				opts.publicUrl,
-				{
-					pbf: options.pbfAlias,
-				},
 			);
 			arr.push(info);
 		}
@@ -318,10 +292,6 @@ export function start(opts: ServerOptions) {
 	app.get("/index.json", (req, res, next) => {
 		res.send(addTileJSONs(addTileJSONs([], req, "rendered"), req, "data"));
 	});
-
-	// ------------------------------------
-	// serve web presentations
-	// app.use("/", express.static(join(__dirname, "../public/resources")));
 
 	const templates = join(__dirname, "../public/templates");
 	const serveTemplate = (urlPath: string, template: string, dataGetter) => {
@@ -357,15 +327,13 @@ export function start(opts: ServerOptions) {
 							}
 						}
 						const packageJsonData = readPackageSync();
-						data[
-							"server_version"
-						] = `${packageJsonData.name} v${packageJsonData.version}`;
-						data["public_url"] = opts.publicUrl || "/";
+						data.server_version = `${packageJsonData.name} v${packageJsonData.version}`;
+						data.public_url = opts.publicUrl;
 						// data["is_light"] = isLight;
-						data["key_query_part"] = req.query.key
+						data.key_query_part = req.query.key
 							? `key=${encodeURIComponent(req.query.key)}&amp;`
 							: "";
-						data["key_query"] = req.query.key
+						data.key_query = req.query.key
 							? `?key=${encodeURIComponent(req.query.key)}`
 							: "";
 						if (template === "wmts") res.set("Content-Type", "text/xml");
@@ -378,12 +346,13 @@ export function start(opts: ServerOptions) {
 	};
 
 	serveTemplate("/$", "index", (req: Request) => {
-		let styles = {};
-		for (const id of Object.keys(serving.styles || {})) {
-			let style = {
-				...serving.styles[id],
-				serving_data: serving.styles[id],
-				serving_rendered: serving.rendered[id],
+		const styles = new Map<string, any>();
+
+		for (const id of Object.keys(serving.styles)) {
+			const style = {
+				...serving.styles.get(id),
+				serving_data: serving.styles.get(id),
+				serving_rendered: serving.rendered.get(id),
 			};
 
 			if (style.serving_rendered) {
@@ -408,14 +377,16 @@ export function start(opts: ServerOptions) {
 				)[0];
 			}
 
-			styles[id] = style;
+			styles.set(id, style);
 		}
 
 		let datas = {};
-		for (const id of Object.keys(serving.data || {})) {
-			let data = Object.assign({}, serving.data[id]);
+		for (const id of Object.keys(serving.data)) {
+			let data = Object.assign({}, serving.data.get(id));
 
-			const { tileJSON } = serving.data[id];
+			// const { tileJSON } = serving.data[id];
+			const tileJSON = serving.data.get().tileJSON as TileJSON;
+
 			const { center } = tileJSON;
 
 			if (center) {
@@ -439,9 +410,6 @@ export function start(opts: ServerOptions) {
 					`data/${id}`,
 					tileJSON.format,
 					opts.publicUrl,
-					{
-						pbf: options.pbfAlias,
-					},
 				)[0];
 			}
 			if (data.filesize) {
@@ -467,9 +435,9 @@ export function start(opts: ServerOptions) {
 		};
 	});
 
-	serveTemplate("/styles/:id/$", "viewer", (req) => {
+	serveTemplate("/styles/:id/$", "viewer", (req: Request) => {
 		const { id } = req.params;
-		const style = clone(((serving.styles || {})[id] || {}).styleJSON);
+		const style = clone(serving.styles.get(id).styleJSON);
 
 		if (!style) {
 			return null;
@@ -478,22 +446,17 @@ export function start(opts: ServerOptions) {
 		return {
 			...style,
 			id,
-			name: (serving.styles[id] || serving.rendered[id]).name,
-			serving_data: serving.styles[id],
-			serving_rendered: serving.rendered[id],
+			name: (serving.styles.get(id) || serving.rendered.get(id)).name,
+			serving_data: serving.styles.get(id),
+			serving_rendered: serving.rendered.get(id),
 		};
 	});
 
-	/*
-  app.use('/rendered/:id/$', function(req, res, next) {
-    return res.redirect(301, '/styles/' + req.params.id + '/');
-  });
-  */
 	serveTemplate("/styles/:id/wmts.xml", "wmts", (req: Request) => {
 		const { id } = req.params;
 		console.log("wmts", id);
 
-		const wmts = clone((serving.styles || {})[id]);
+		const wmts = clone(serving.styles.get(id));
 
 		if (!wmts) {
 			return null;
@@ -517,14 +480,14 @@ export function start(opts: ServerOptions) {
 		return {
 			...wmts,
 			id,
-			name: (serving.styles[id] || serving.rendered[id]).name,
+			name: (serving.styles.get(id) || serving.rendered.get(id)).name,
 			baseUrl,
 		};
 	});
 
 	serveTemplate("/data/:id/$", "data", (req: Request) => {
 		const { id } = req.params;
-		const data = serving.data[id];
+		const data = serving.data.get(id);
 
 		if (!data) {
 			return null;

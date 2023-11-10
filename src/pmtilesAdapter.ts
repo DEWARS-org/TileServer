@@ -28,7 +28,7 @@ class PMTilesFileSource {
  * @param buffer
  * @param offset
  */
-async function ReadFileBytes(fd, buffer: Uint8Array, offset: number) {
+async function ReadFileBytes(fd: number, buffer: Uint8Array, offset: number) {
 	return new Promise((resolve, reject) => {
 		read(fd, buffer, 0, buffer.length, offset, (err) => {
 			if (err) {
