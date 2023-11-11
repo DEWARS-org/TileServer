@@ -1,79 +1,41 @@
-import { read, openSync } from "node:fs";
-import { PMTiles, FetchSource, TileType } from "pmtiles";
+import { openSync, read } from "node:fs";
+import { promisify } from "node:util";
+import { PMTiles, TileType, Source, RangeResponse } from "pmtiles";
 
-class PMTilesFileSource {
+class PMTilesFileSource implements Source {
 	fd: number;
 
-	constructor(fd: number) {
-		this.fd = fd;
+	constructor(path: string) {
+		this.fd = openSync(path, "r");
 	}
+
+	async getBytes(offset: number, length: number): Promise<RangeResponse> {
+		const buffer = new Uint8Array(length);
+		await promisify(read)(this.fd, buffer, 0, buffer.length, offset);
+
+		return { data: buffer.buffer };
+	}
+
 	getKey() {
-		return this.fd;
-	}
-	async getBytes(offset: number, length: number) {
-		const buffer = Buffer.alloc(length);
-		await ReadFileBytes(this.fd, buffer, offset);
-		const ab = buffer.buffer.slice(
-			buffer.byteOffset,
-			buffer.byteOffset + buffer.byteLength,
-		);
-		return { data: ab };
+		return this.fd.toString();
 	}
 }
 
-async function ReadFileBytes(fd: number, buffer: Uint8Array, offset: number) {
-	return new Promise((resolve, reject) => {
-		read(fd, buffer, 0, buffer.length, offset, (err) => {
-			if (err) {
-				return reject(err);
-			}
-			resolve();
-		});
-	});
-}
-
-export function PMtilesOpen(FilePath: string) {
-	const fd = openSync(FilePath, "r");
-	const source = new PMTilesFileSource(fd);
+export function PMtilesOpen(path: string) {
+	const source = new PMTilesFileSource(path);
 	return new PMTiles(source);
 }
 
 export async function GetPMtilesInfo(pmtiles: PMTiles) {
 	const header = await pmtiles.getHeader();
-
 	const metadata = await pmtiles.getMetadata();
+	const tileInfo = GetPmtilesTileInfo(header.tileType);
 
-	//Add missing metadata from header
-	metadata["format"] = GetPmtilesTileType(header.tileType).type;
-	metadata["minzoom"] = header.minZoom;
-	metadata["maxzoom"] = header.maxZoom;
-
-	if (header.minLon && header.minLat && header.maxLon && header.maxLat) {
-		metadata["bounds"] = [
-			header.minLon,
-			header.minLat,
-			header.maxLon,
-			header.maxLat,
-		];
-	} else {
-		metadata["bounds"] = [-180, -85.05112877980659, 180, 85.0511287798066];
-	}
-
-	if (header.centerZoom) {
-		metadata["center"] = [
-			header.centerLon,
-			header.centerLat,
-			header.centerZoom,
-		];
-	} else {
-		metadata["center"] = [
-			header.centerLon,
-			header.centerLat,
-			parseInt(metadata["maxzoom"]) / 2,
-		];
-	}
-
-	return metadata;
+	return {
+		header,
+		metadata,
+		tileInfo,
+	};
 }
 
 export async function GetPMtilesTile(
@@ -83,43 +45,32 @@ export async function GetPMtilesTile(
 	y: number,
 ) {
 	const header = await pmtiles.getHeader();
-	const TileType = GetPmtilesTileType(header.tileType);
-	let zxyTile = await pmtiles.getZxy(z, x, y);
-	if (zxyTile?.data) {
-		zxyTile = Buffer.from(zxyTile.data);
-	} else {
-		zxyTile = undefined;
+	const tileInfo = GetPmtilesTileInfo(header.tileType);
+	const zxyTile = await pmtiles.getZxy(z, x, y);
+
+	if (!zxyTile) {
+		throw new Error("Tile not found");
 	}
-	return { data: zxyTile, header: TileType.header };
+
+	const data = new Uint8Array(zxyTile.data);
+
+	return { data, tileInfo };
 }
 
-function GetPmtilesTileType(typenum: TileType) {
-	let head = {};
-	let tileType;
-	switch (typenum) {
-		case TileType.Unknown:
-			tileType = "Unknown";
-			break;
-		case TileType.Mvt:
-			tileType = "pbf";
-			head["Content-Type"] = "application/x-protobuf";
-			break;
-		case TileType.Png:
-			tileType = "png";
-			head["Content-Type"] = "image/png";
-			break;
-		case TileType.Jpeg:
-			tileType = "jpeg";
-			head["Content-Type"] = "image/jpeg";
-			break;
-		case TileType.Webp:
-			tileType = "webp";
-			head["Content-Type"] = "image/webp";
-			break;
-		case TileType.Avif:
-			tileType = "avif";
-			head["Content-Type"] = "image/avif";
-			break;
-	}
-	return { type: tileType, header: head };
+function GetPmtilesTileInfo(typenum: TileType) {
+	const tileTypeData = new Map<TileType, [string, string]>();
+
+	tileTypeData.set(TileType.Unknown, ["Unknown", ""]);
+	tileTypeData.set(TileType.Mvt, ["application/x-protobuf", "mvt"]);
+	tileTypeData.set(TileType.Png, ["image/png", "png"]);
+	tileTypeData.set(TileType.Jpeg, ["image/jpeg", "jpg"]);
+	tileTypeData.set(TileType.Webp, ["image/webp", "webp"]);
+	tileTypeData.set(TileType.Avif, ["image/avif", "avif"]);
+
+	const [contentType, fileExtension] = tileTypeData.get(typenum) ?? [
+		"Unknown",
+		"",
+	];
+
+	return { contentType, fileExtension };
 }
