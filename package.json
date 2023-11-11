@@ -3,6 +3,8 @@
 	"version": "1.0.0",
 	"description": "",
 	"type": "module",
+	"main": "./dist/index.js",
+	"exports": "./dist/index.js",
 	"scripts": {
 		"dev": "tsx src/server.ts",
 		"build": "tsc"
