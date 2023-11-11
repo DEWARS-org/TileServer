@@ -1,7 +1,7 @@
 import { cors } from "@tinyhttp/cors";
 import { App } from "@tinyhttp/app";
 import { logger } from "@tinyhttp/logger";
-import { WMTSServerMiddleware } from "./index.js";
+import { RegisterTileServer } from "./index.js";
 
 new App()
 	.use(logger())
@@ -17,7 +17,7 @@ new App()
 			origin: "http://localhost:3000",
 		}),
 	)
-	.use(WMTSServerMiddleware)
+	.use(RegisterTileServer)
 	.listen(5000, async () => {
 		console.log("🚀 Server listening on port 5000");
 	});

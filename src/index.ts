@@ -53,7 +53,7 @@ export type ServingData = Map<
 	}
 >;
 
-export async function WMTSServerMiddleware(
+export async function RegisterTileServer(
 	req: Request,
 	res: Response,
 	next: NextFunction,
