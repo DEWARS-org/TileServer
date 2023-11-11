@@ -1,150 +1,166 @@
-import { serve_data } from "./serveData.js";
-import { serve_style } from "./serveStyle.js";
 import { TileJSON } from "./utils.js";
 import { Request, Response, NextFunction } from "@tinyhttp/app";
 import { GetPMtilesTile } from "./pmtilesAdapter.js";
 import { PMTiles } from "pmtiles";
 import { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
+import theme from "protomaps-themes-base";
+import { resolve } from "path";
+import { PMtilesOpen, GetPMtilesInfo } from "./pmtilesAdapter.js";
 
-export interface ServerOptions {
-	config: ServerConfig;
-	configPath?: string;
-	publicUrl: string;
-}
-
-export interface ServerConigOptions {
-	paths: {
-		pmtiles: string;
-	};
-}
-
-export interface ServerConfig {
-	options: ServerConigOptions;
-
-	styles: {
-		[key: string]: {
-			style: string;
-			tilejson: TileJSON;
-		};
-	};
-	data: {
-		[key: string]: {
-			pmtiles: string;
-		};
-	};
-}
-
-export type ServingStyle = Map<
-	string,
-	{
-		styleJSON: StyleSpecification;
-		spritePath: string;
-		publicUrl: string;
-		name: string;
-	}
->;
-
-export type ServingData = Map<
-	string,
-	{
-		tileJSON: TileJSON;
-		publicUrl: string;
-		source: PMTiles;
-	}
->;
-
-export async function RegisterTileServer(
-	req: Request,
-	res: Response,
-	next: NextFunction,
-) {
-	const config = {
-		options: {
-			paths: {
-				pmtiles: "./data/pmtiles",
-			},
-		},
-		data: {
-			protomaps: {
-				pmtiles: "20230913.pmtiles",
-			},
-		},
-	};
-
-	const serving = {
-		styles: new Map() as ServingStyle,
-		data: new Map() as ServingData,
-	};
-
-	serve_style.add(serving.styles, "test-style", "");
-
-	const options = config.options;
-	const opts = {
-		config: config,
-		publicUrl: "",
-	};
-
-	await serve_data.add(
-		options,
-		serving.data,
-		opts.config.data.protomaps,
-		"protomaps",
-		opts.publicUrl,
-	);
-
-	const styleJsonRegex = /^\/style\/(?<id>.*)\.json$/g;
-	const styleJsonMatch = styleJsonRegex.exec(req.path);
-
-	if (styleJsonMatch?.groups?.id) {
-		const data = serving.styles.get(styleJsonMatch?.groups?.id);
-
-		if (!data) {
-			return res.sendStatus(404);
+export class TileServer {
+	private dataDirectory: string;
+	private publicURL: string;
+	private styles: Map<string, StyleSpecification>;
+	private pmTileSources: Map<
+		string,
+		{
+			tileJSON: TileJSON;
+			source: PMTiles;
 		}
-		res.json(data.styleJSON);
-		return next();
+	>;
+
+	constructor() {
+		this.dataDirectory = "./data";
+		this.publicURL = "http://localhost:4000";
+		this.styles = new Map();
+		this.pmTileSources = new Map();
+
+		this.addStyle("protomaps-dark", "dark");
+		this.addStyle("protomaps-light", "light");
+		this.addPMTileSource("protomaps");
 	}
 
-	const tileJsonRegex = /^\/(?<id>.*)\.json$/g;
-	const tileJsonMatch = tileJsonRegex.exec(req.path);
+	private addStyle(id: string, themeColor: "light" | "dark") {
+		const styleJSON: StyleSpecification = {
+			version: 8,
+			glyphs:
+				"https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
+			sources: {},
+			layers: theme.default("protomaps", themeColor),
+		};
 
-	if (tileJsonMatch?.groups?.id) {
-		const data = serving.data.get(tileJsonMatch?.groups?.id);
+		this.styles.set(id, styleJSON);
+	}
 
-		if (!data) {
-			return res.sendStatus(404);
+	getStyles() {
+		return this.styles;
+	}
+
+	private async addPMTileSource(id: string) {
+		const inputFile = resolve(
+			this.dataDirectory,
+			"pmtiles",
+			"20230913.pmtiles",
+		);
+		const source = PMtilesOpen(inputFile);
+		const metadata = await GetPMtilesInfo(source);
+
+		const tileJSON: TileJSON = {
+			tilejson: "3.0.0",
+			tiles: [
+				`${this.publicURL}/tiles/${id}/{z}/{x}/{y}.${metadata.tileInfo.fileExtension}`,
+			],
+			vector_layers: metadata.metadata.vector_layers,
+			attribution: "",
+			bounds: [
+				metadata.header.minLon,
+				metadata.header.minLat,
+				metadata.header.maxLon,
+				metadata.header.maxLat,
+			],
+			center: [
+				metadata.header.centerLon,
+				metadata.header.centerLat,
+				metadata.header.centerZoom,
+			],
+			data: [],
+			description: "",
+			fillzoom: 14,
+			grids: [],
+			legend: "",
+			maxzoom: metadata.header.maxZoom,
+			minzoom: metadata.header.minZoom,
+			name: id,
+			scheme: "xyz",
+			template: "",
+			version: "1.0.0",
+		};
+
+		// fixTileJSONCenter(tileJSON); // @TODO: Investigate
+
+		this.pmTileSources.set(id, {
+			tileJSON,
+			source,
+		});
+	}
+
+	public getPMTileSources() {
+		return this.pmTileSources;
+	}
+
+	public async registerMiddleware(
+		req: Request,
+		res: Response,
+		next: NextFunction,
+	) {
+		interface StyleJsonGroups {
+			styleId: string;
+			tileSource: string;
 		}
-		res.json(data.tileJSON);
-		return next();
-	}
 
-	const pathRegex =
-		/^\/wmts\/(?<style>.*)\/((?<wmts>wmts\.xml)|(?<z>\d+)\/(?<x>\d+)\/(?<y>\d+).(?<format>[\w.]+))$/g;
+		const styleJsonRegex =
+			/^\/style\/(?<styleId>.*)\/(?<tileSource>.*)\.json$/g;
+		const styleJsonMatch = styleJsonRegex.exec(req.path)
+			?.groups as unknown as StyleJsonGroups;
 
-	interface PathGroups {
-		style: string;
-		wmts?: string;
-		z?: string;
-		x?: string;
-		y?: string;
-		format?: string;
-	}
+		if (styleJsonMatch) {
+			const style = this.styles.get(styleJsonMatch.styleId);
+			const pmTiles = this.pmTileSources.get(styleJsonMatch.tileSource);
 
-	const pathGroupsMatch = pathRegex.exec(req.path);
+			if (!style || !pmTiles) {
+				return res.sendStatus(404);
+			}
 
-	const pathGroups = pathGroupsMatch?.groups as unknown as PathGroups;
+			style.sources.protomaps = {
+				type: "vector",
+				url: `${this.publicURL}/tiles/${styleJsonMatch.tileSource}.json`,
+			};
 
-	if (pathGroups.style) {
-		const style = serving.styles.get(pathGroups.style);
-		const data = serving.data.get("protomaps");
-		if (pathGroups.wmts) {
-			res.sendStatus(200);
-		} else if (
-			pathGroups.z &&
-			pathGroups.x &&
-			pathGroups.y &&
-			pathGroups.format
-		) {
+			res.json(style);
+			return next();
+		}
+
+		const tileJsonRegex = /^\/tiles\/(?<id>.*)\.json$/g;
+		const tileJsonMatch = tileJsonRegex.exec(req.path);
+
+		if (tileJsonMatch?.groups?.id) {
+			const data = this.pmTileSources.get(tileJsonMatch?.groups?.id);
+
+			if (!data) {
+				return res.sendStatus(404);
+			}
+			res.json(data.tileJSON);
+			return next();
+		}
+
+		const pathRegex =
+			/^\/tiles\/(?<tileSource>.*)\/(?<z>\d+)\/(?<x>\d+)\/(?<y>\d+).(?<format>[\w.]+)$/g;
+
+		interface PathGroups {
+			tileSource: string;
+			z: string;
+			x: string;
+			y: string;
+			format: string;
+		}
+
+		const pathGroupsMatch = pathRegex.exec(req.path);
+
+		const pathGroups = pathGroupsMatch?.groups as unknown as PathGroups;
+
+		if (pathGroups.tileSource) {
+			const data = this.pmTileSources.get(pathGroups.tileSource);
+
 			if (data) {
 				const tile = await GetPMtilesTile(
 					data.source,
@@ -157,7 +173,7 @@ export async function RegisterTileServer(
 				res.end(tile.data);
 			}
 		}
-	}
 
-	return next();
+		return next();
+	}
 }
