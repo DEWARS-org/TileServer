@@ -26,18 +26,6 @@ export function PMtilesOpen(path: string) {
 	return new PMTiles(source);
 }
 
-export async function GetPMtilesInfo(pmtiles: PMTiles) {
-	const header = await pmtiles.getHeader();
-	const metadata = await pmtiles.getMetadata();
-	const tileInfo = GetPmtilesTileInfo(header.tileType);
-
-	return {
-		header,
-		metadata,
-		tileInfo,
-	};
-}
-
 export async function GetPMtilesTile(
 	pmtiles: PMTiles,
 	z: number,
@@ -57,7 +45,7 @@ export async function GetPMtilesTile(
 	return { data, tileInfo };
 }
 
-function GetPmtilesTileInfo(typenum: TileType) {
+export function GetPmtilesTileInfo(typenum: TileType) {
 	const tileTypeData = new Map<TileType, [string, string]>();
 
 	tileTypeData.set(TileType.Unknown, ["Unknown", ""]);

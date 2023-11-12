@@ -1,11 +1,11 @@
 import { TileJSON } from "./utils.js";
 import { Request, Response, NextFunction } from "@tinyhttp/app";
-import { GetPMtilesTile } from "./pmtilesAdapter.js";
+import { GetPMtilesTile, GetPmtilesTileInfo } from "./pmtilesAdapter.js";
 import { PMTiles } from "pmtiles";
-import { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
+import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import theme from "protomaps-themes-base";
 import { resolve } from "path";
-import { PMtilesOpen, GetPMtilesInfo } from "./pmtilesAdapter.js";
+import { PMtilesOpen } from "./pmtilesAdapter.js";
 
 export class TileServer {
 	private dataDirectory: string;
@@ -47,46 +47,42 @@ export class TileServer {
 	}
 
 	private async addPMTileSource(id: string) {
-		const inputFile = resolve(
-			this.dataDirectory,
-			"pmtiles",
-			"20230913.pmtiles",
-		);
+		const inputFile = resolve(this.dataDirectory, "pmtiles", `${id}.pmtiles`);
 		const source = PMtilesOpen(inputFile);
-		const metadata = await GetPMtilesInfo(source);
+		const metadata = await source.getMetadata();
+		const {
+			minLon,
+			minLat,
+			maxLon,
+			maxLat,
+			centerLon,
+			centerLat,
+			centerZoom,
+			maxZoom,
+			minZoom,
+			tileType,
+		} = await source.getHeader();
+		const { fileExtension } = GetPmtilesTileInfo(tileType);
 
 		const tileJSON: TileJSON = {
 			tilejson: "3.0.0",
-			tiles: [
-				`${this.publicURL}/tiles/${id}/{z}/{x}/{y}.${metadata.tileInfo.fileExtension}`,
-			],
-			vector_layers: metadata.metadata.vector_layers,
+			tiles: [`${this.publicURL}/tiles/${id}/{z}/{x}/{y}.${fileExtension}`],
+			vector_layers: metadata.vector_layers,
 			attribution: "",
-			bounds: [
-				metadata.header.minLon,
-				metadata.header.minLat,
-				metadata.header.maxLon,
-				metadata.header.maxLat,
-			],
-			center: [
-				metadata.header.centerLon,
-				metadata.header.centerLat,
-				metadata.header.centerZoom,
-			],
+			bounds: [minLon, minLat, maxLon, maxLat],
+			center: [centerLon, centerLat, centerZoom],
 			data: [],
 			description: "",
 			fillzoom: 14,
 			grids: [],
 			legend: "",
-			maxzoom: metadata.header.maxZoom,
-			minzoom: metadata.header.minZoom,
+			maxzoom: maxZoom,
+			minzoom: minZoom,
 			name: id,
 			scheme: "xyz",
 			template: "",
 			version: "1.0.0",
 		};
-
-		// fixTileJSONCenter(tileJSON); // @TODO: Investigate
 
 		this.pmTileSources.set(id, {
 			tileJSON,
