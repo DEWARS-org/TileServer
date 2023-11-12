@@ -5,9 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
-  pmtiles:
-    specifier: ^2.11.0
-    version: link:../PMTiles/js
+  '@dewars/pmtiles':
+    specifier: ^1.0.0
+    version: 1.0.0
   protomaps-themes-base:
     specifier: 2.0.0-alpha.4
     version: 2.0.0-alpha.4
@@ -39,6 +39,12 @@ devDependencies:
     version: 5.2.2
 
 packages:
+
+  /@dewars/pmtiles@1.0.0:
+    resolution: {integrity: sha512-LqJfqHeTUzViWn25Mpc2eBy/5KH5i+B8gx4Acwpjq7uAWwixau+lQcicu+531KgW7nCLgAjtDuEwI1HUYKLfxw==}
+    dependencies:
+      fflate: 0.8.1
+    dev: false
 
   /@esbuild/android-arm64@0.18.20:
     resolution: {integrity: sha512-Nz4rJcchGDtENV0eMKUNa6L12zz2zBDXuhj/Vjh18zGqB44Bi7MBMSXjgunJgjRhCmKOjnPuZp4Mb6OKqtMHLQ==}
@@ -693,6 +699,10 @@ packages:
   /fast-json-stable-stringify@2.1.0:
     resolution: {integrity: sha512-lhd/wF+Lk98HZoTCtlVraHtfh5XYijIjalXck7saUtuanSDyLMxnHhSXEDJqHxD7msR8D0uCmqlkwjCV8xvwHw==}
     dev: true
+
+  /fflate@0.8.1:
+    resolution: {integrity: sha512-/exOvEuc+/iaUm105QIiOt4LpBdMTWsXxqR0HDF35vx3fmaKzw7354gTilCh5rkzEt8WYyG//ku3h3nRmd7CHQ==}
+    dev: false
 
   /figures@1.7.0:
     resolution: {integrity: sha512-UxKlfCRuCBxSXU4C6t9scbDyWZ4VlaFFdojKtzJuSkuOBQ5CNFum+zZXFwHjo+CxBC1t6zlYPgHIgFjL8ggoEQ==}

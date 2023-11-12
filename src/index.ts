@@ -1,7 +1,7 @@
 import { TileJSON } from "./utils.js";
 import { Request, Response, NextFunction } from "@tinyhttp/app";
 import { GetPMtilesTile, GetPmtilesTileInfo } from "./pmtilesAdapter.js";
-import { PMTiles } from "pmtiles";
+import { PMTiles } from "@dewars/pmtiles";
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import theme from "protomaps-themes-base";
 import { resolve } from "path";

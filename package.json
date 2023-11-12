@@ -10,6 +10,7 @@
 		"build": "tsc"
 	},
 	"license": "GPL-3.0-only",
+	"files": ["dist"],
 	"devDependencies": {
 		"@maplibre/maplibre-gl-style-spec": "^19.3.3",
 		"@tinyhttp/app": "^2.2.1",
@@ -21,7 +22,7 @@
 		"typescript": "^5.2.2"
 	},
 	"dependencies": {
-		"pmtiles": "^2.11.0",
+		"@dewars/pmtiles": "^1.0.0",
 		"protomaps-themes-base": "2.0.0-alpha.4"
 	}
 }

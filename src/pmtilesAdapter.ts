@@ -1,6 +1,6 @@
 import { openSync, read } from "node:fs";
 import { promisify } from "node:util";
-import { PMTiles, TileType, Source, RangeResponse } from "pmtiles";
+import { PMTiles, TileType, Source, RangeResponse } from "@dewars/pmtiles";
 
 class PMTilesFileSource implements Source {
 	fd: number;
