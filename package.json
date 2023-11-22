@@ -1,28 +1,30 @@
 {
-	"name": "@dewars/tileserver",
-	"version": "1.0.0",
-	"description": "",
-	"type": "module",
-	"main": "./dist/index.js",
-	"exports": "./dist/index.js",
-	"scripts": {
-		"dev": "tsx src/server.ts",
-		"build": "tsc"
-	},
-	"license": "GPL-3.0-only",
-	"files": ["dist"],
-	"devDependencies": {
-		"@maplibre/maplibre-gl-style-spec": "^19.3.3",
-		"@tinyhttp/app": "^2.2.1",
-		"@tinyhttp/cors": "^2.0.0",
-		"@tinyhttp/logger": "^2.0.0",
-		"@types/node": "^20.9.0",
-		"biome": "^0.3.3",
-		"tsx": "^3.14.0",
-		"typescript": "^5.2.2"
-	},
-	"dependencies": {
-		"@dewars/pmtiles": "^1.0.0",
-		"protomaps-themes-base": "2.0.0-alpha.4"
-	}
+  "name": "@dewars/tileserver",
+  "version": "1.0.1",
+  "description": "",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsc"
+  },
+  "license": "GPL-3.0-only",
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@maplibre/maplibre-gl-style-spec": "^19.3.3",
+    "@tinyhttp/app": "^2.2.1",
+    "@tinyhttp/cors": "^2.0.0",
+    "@tinyhttp/logger": "^2.0.0",
+    "@types/node": "^20.9.4",
+    "biome": "^0.3.3",
+    "tsx": "^4.2.0",
+    "typescript": "^5.3.2"
+  },
+  "dependencies": {
+    "@dewars/pmtiles": "^1.0.0",
+    "protomaps-themes-base": "2.0.0-alpha.4"
+  }
 }
